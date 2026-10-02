@@ -1,0 +1,5 @@
+/git-mcp
+/bin/
+/.cache/
+coverage.out
+coverage.txt

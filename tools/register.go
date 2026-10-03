@@ -25,7 +25,7 @@ const (
 	descStatus  = "Show the working tree status."
 	descDiff    = "Show the working tree diff, or the diff for one revision."
 	descCommits = "List recent commits (git log)."
-	descStage   = "Stage paths (git add) for the next commit."
+	descStage   = "Stage paths (git add) for the next commit. Call only when the user asked to stage or commit."
 	descCommit  = "Create a commit from the index. Call only when the user asked for a commit."
 )
 
@@ -79,7 +79,7 @@ func Register(s *mcpserver.MCPServer, root, tier string) (int, error) {
 			), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				paths, err := req.RequireStringSlice("paths")
 				if err != nil || len(paths) == 0 {
-					return mcp.NewToolResultError("paths is required"), nil
+					return mcp.NewToolResultError(errPathsRequired), nil
 				}
 				return textCall(Stage(ctx, root, paths))
 			})
@@ -91,7 +91,7 @@ func Register(s *mcpserver.MCPServer, root, tier string) (int, error) {
 			), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				message, err := req.RequireString("message")
 				if err != nil || strings.TrimSpace(message) == "" {
-					return mcp.NewToolResultError("message is required"), nil
+					return mcp.NewToolResultError(errMessageRequired), nil
 				}
 				return textCall(Commit(ctx, root, message))
 			})

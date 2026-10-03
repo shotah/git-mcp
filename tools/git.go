@@ -17,6 +17,9 @@ const (
 	defaultLog = 20
 	maxLog     = 50
 	maxDiff    = 8000
+
+	errPathsRequired   = `paths is required, e.g. {"paths":["a.go"]}`
+	errMessageRequired = `message is required, e.g. {"message":"fix the greeting"}`
 )
 
 // WorkTree reports whether root is a git working tree.
@@ -132,12 +135,12 @@ func Commits(ctx context.Context, root string, limit int) (string, error) {
 // Stage adds paths to the index. It does not commit.
 func Stage(ctx context.Context, root string, paths []string) (string, error) {
 	if len(paths) == 0 {
-		return "", errors.New("paths is required")
+		return "", errors.New(errPathsRequired)
 	}
 	rels := make([]string, 0, len(paths))
 	for _, p := range paths {
 		if strings.TrimSpace(p) == "" {
-			return "", errors.New("paths must be non-empty strings")
+			return "", errors.New(errPathsRequired)
 		}
 		abs, err := Resolve(root, p)
 		if err != nil {
@@ -154,24 +157,36 @@ func Stage(ctx context.Context, root string, paths []string) (string, error) {
 	if err != nil {
 		return "", gitErr(stderr, err)
 	}
-	return "staged: " + strings.Join(rels, ", ") + "\n", nil
+	return withStatus(ctx, root, "staged: "+strings.Join(rels, ", ")), nil
 }
 
 // Commit creates a commit from the index. It does not stage and it does not push.
 func Commit(ctx context.Context, root, message string) (string, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
-		return "", errors.New("message is required")
+		return "", errors.New(errMessageRequired)
 	}
-	_, stderr, err := runGit(ctx, root, "commit", "-m", message)
+	commitOut, commitErrOut, err := runGit(ctx, root, "commit", "-m", message)
 	if err != nil {
-		return "", gitErr(stderr, err)
+		return "", commitFailure(commitOut, commitErrOut, err)
 	}
 	stdout, stderr, err := runGit(ctx, root, "rev-parse", "--short", "HEAD")
 	if err != nil {
 		return "", gitErr(stderr, err)
 	}
-	return "committed: " + strings.TrimSpace(stdout) + "\n", nil
+	return withStatus(ctx, root, "committed: "+strings.TrimSpace(stdout)), nil
+}
+
+// withStatus appends the working tree so a short success line is enough to see what changed.
+func withStatus(ctx context.Context, root, line string) string {
+	if !strings.HasSuffix(line, "\n") {
+		line += "\n"
+	}
+	status, err := Status(ctx, root)
+	if err != nil {
+		return line
+	}
+	return line + status
 }
 
 func runGit(ctx context.Context, root string, args ...string) (string, string, error) {
@@ -245,6 +260,22 @@ func emptyDiff(s string) string {
 func noHead(stderr string) bool {
 	msg := strings.ToLower(stderr)
 	return strings.Contains(msg, "bad revision") || strings.Contains(msg, "ambiguous argument")
+}
+
+// commitFailure hides git's "use git add" hint. That hint is what sends the model into stage_update.
+// Git writes the hint on stdout, so both streams are checked.
+func commitFailure(stdout, stderr string, err error) error {
+	msg := strings.TrimSpace(stdout + "\n" + stderr)
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "nothing to commit") ||
+		strings.Contains(lower, "no changes added to commit") ||
+		strings.Contains(lower, "nothing added to commit") {
+		return errors.New("nothing to commit")
+	}
+	if msg == "" {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func gitErr(stderr string, err error) error {

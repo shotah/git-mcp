@@ -29,7 +29,7 @@ Naming: [george docs/mcp-naming.md](https://github.com/shotah/george/blob/main/d
 | `stage_update` | `git__stage_update` |
 | `commit_create` | `git__commit_create` |
 
-`commit_create` commits the index. It does not stage and it does not push.
+`stage_update` and `commit_create` tell the model to call them only when the user asked. `commit_create` commits the index. It does not stage and it does not push. A commit with an empty index returns `nothing to commit` and does not suggest staging.
 
 ## Run
 

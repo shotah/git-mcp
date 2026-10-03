@@ -113,7 +113,7 @@ func TestStatusDiffStageCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(staged, "note.txt") {
+	if !strings.Contains(staged, "note.txt") || !strings.Contains(staged, "branch:") {
 		t.Fatalf("stage = %q", staged)
 	}
 	if _, err := Diff(ctx, root, "--all", ""); err == nil {
@@ -123,7 +123,7 @@ func TestStatusDiffStageCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(committed, "committed: ") {
+	if !strings.HasPrefix(committed, "committed: ") || !strings.Contains(committed, "clean") {
 		t.Fatalf("commit = %q", committed)
 	}
 	clean, err := Status(ctx, root)
@@ -219,8 +219,8 @@ func TestCommitErrorAndClip(t *testing.T) {
 	if _, err := Commit(ctx, root, "add note"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Commit(ctx, root, "nothing staged"); err == nil {
-		t.Fatal("empty commit succeeded")
+	if _, err := Commit(ctx, root, "nothing staged"); err == nil || err.Error() != "nothing to commit" || strings.Contains(err.Error(), "git add") {
+		t.Fatalf("empty commit = %v", err)
 	}
 	clean, err := Diff(ctx, root, "", "")
 	if err != nil {
@@ -228,6 +228,12 @@ func TestCommitErrorAndClip(t *testing.T) {
 	}
 	if !strings.Contains(clean, "clean working tree") {
 		t.Fatalf("clean diff = %q", clean)
+	}
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("hello\nunstaged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Commit(ctx, root, "should not stage"); err == nil || err.Error() != "nothing to commit" || strings.Contains(err.Error(), "git add") {
+		t.Fatalf("unstaged commit = %v", err)
 	}
 	big := strings.Repeat("line\n", 2000)
 	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte(big), 0o644); err != nil {
@@ -269,11 +275,15 @@ func TestToolHandlers(t *testing.T) {
 		t.Fatalf("status call = %q", got)
 	}
 	errText := callTool(t, s, ToolCommit, map[string]any{"message": " "})
-	if !strings.Contains(errText, "message") {
+	if errText != errMessageRequired {
 		t.Fatalf("commit call = %q", errText)
 	}
 	errText = callTool(t, s, ToolStage, map[string]any{"paths": []any{}})
-	if !strings.Contains(errText, "paths") {
+	if errText != errPathsRequired {
+		t.Fatalf("stage call = %q", errText)
+	}
+	errText = callTool(t, s, ToolStage, map[string]any{})
+	if errText != errPathsRequired {
 		t.Fatalf("stage call = %q", errText)
 	}
 }
